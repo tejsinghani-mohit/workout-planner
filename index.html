@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 30-Day Workout Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: The application is designed as an interactive weekly dashboard. The primary view shows the current week's schedule in a 7-day grid, which is a highly intuitive structure for planning. Users can navigate between weeks. Clicking on a day reveals detailed workout information in a modal, preventing context loss and keeping the interface clean. A prominent "Today's Workout" card provides immediate, actionable information. Progress is tracked via checkboxes, which dynamically update a summary chart. This structure was chosen to transform a static plan into a dynamic, motivating, and easy-to-navigate tool that aligns with how users typically manage schedules. -->
+    <!-- Visualization & Content Choices: Report Info: Daily workout schedule. -> Goal: Organize & Inform. -> Viz/Presentation: Interactive weekly grid of cards (HTML/Tailwind) with a modal (JS-driven) for details. -> Interaction: Click card to see details. -> Justification: Breaks down the 30-day plan into manageable weekly chunks, preventing overwhelm. The modal keeps the user on the main dashboard. | Report Info: Workout completion. -> Goal: Engage & Motivate. -> Viz/Presentation: Checkboxes on each card and a donut chart (Chart.js). -> Interaction: Click checkbox to mark day complete, chart updates automatically. -> Justification: Provides instant visual feedback and a sense of accomplishment, encouraging continued engagement with the plan. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF8; /* Warm neutral background */
+            color: #4A4A4A;
+        }
+        .day-card {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .day-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .day-card.completed {
+            background-color: #F0FDF4; /* Light green */
+            border-color: #22C55E; /* Green */
+            opacity: 0.8;
+        }
+        .day-card.completed .day-title {
+            color: #166534; /* Darker Green */
+        }
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        .modal-content {
+            transition: transform 0.25s ease;
+        }
+        .today-highlight {
+            box-shadow: 0 0 0 2px #3B82F6;
+            border-color: #3B82F6;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 300px;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">Your 30-Day Fitness Journey</h1>
+            <p class="mt-2 text-lg text-gray-600">Stay consistent, track your progress, and achieve your goals.</p>
+        </header>
+
+        <main>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <div id="today-workout-card" class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-3">Today's Workout: <span id="today-title"></span></h2>
+                    <div id="today-details" class="text-gray-700 space-y-2"></div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center items-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-3 text-center">Your Progress</h2>
+                    <p class="text-center text-gray-600 mb-4">This section provides a visual summary of your completed workouts. Keep checking off your completed days to see the chart update!</p>
+                    <div class="chart-container">
+                        <canvas id="progressChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <div class="flex justify-between items-center mb-6">
+                    <button id="prev-week" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        &larr; Previous
+                    </button>
+                    <h2 id="week-title" class="text-xl sm:text-2xl font-bold text-center text-gray-800"></h2>
+                    <button id="next-week" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next &rarr;
+                    </button>
+                </div>
+                <p class="text-center text-gray-600 mb-6">Here is your plan for the week. Click on any day to view the full details of the workout. Use the checkbox in the top right of each card to mark a day as complete and track your progress.</p>
+                <div id="weekly-view" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <div id="workout-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+        <div class="modal-content bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6 sm:p-8 transform scale-95">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-2xl font-bold text-gray-800"></h3>
+                <button id="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div id="modal-body" class="text-gray-700 space-y-4">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const workoutData = [
+            { day: "Thursday", focus: "Shoulders & Arms", details: { "Warm-up": "Light cardio 5 min", "Exercise 1": "Dumbbell Shoulder Press (3 sets x 12 reps)", "Exercise 2": "Lateral Raises (3 sets x 15 reps)", "Exercise 3": "Front Raises + Shrugs (3 sets x 12–15 reps)", "Exercise 4 (Optional)": "Cable Curls / Rope Pushdowns (3 sets x 12-15 reps)", "Cardio": "Treadmill/jump rope 10–15 min" }},
+            { day: "Friday", focus: "HIIT & Abs", details: { "Warm-up": "5–10 min", "HIIT Circuit": "6 moves, 3 rounds (30 sec work / 10 reps, followed by short rest). Example Moves: Burpees, Mountain Climbers, Jump Squats, High Knees, Push-ups, Plank Jacks", "Abs Finisher": "Included in HIIT (Crunches/Planks/Leg Raises as sets)", "Cardio": "Included in HIIT" }},
+            { day: "Saturday", focus: "Rest Day", details: { "Activity": "Active recovery like a light walk, stretching, or complete rest." }},
+            { day: "Sunday", focus: "Rest Day", details: { "Activity": "Active recovery like a light walk, stretching, or complete rest." }},
+            { day: "Monday", focus: "Chest & Cardio", details: { "Warm-up": "Treadmill 5 min + arm circles", "Exercise 1": "Bench Press (3 sets x 12 reps)", "Exercise 2": "Incline Dumbbell Press (3 sets x 12 reps)", "Exercise 3": "Cable Fly / Pec Deck (3 sets x 15 reps)", "Core": "—", "Cardio": "Incline walk / cross-trainer 20 min" }},
+            { day: "Tuesday", focus: "Back & Cardio", details: { "Warm-up": "Treadmill/brisk walk 5 min", "Exercise 1": "Lat Pulldown (3 sets x 12 reps)", "Exercise 2": "One-Arm Dumbbell Row (3 sets x 12 reps per arm)", "Exercise 3": "Barbell/Dumbbell Row (3 sets x 10–12 reps)", "Core": "—", "Cardio": "Bike / elliptical / jump rope 15 min" }},
+            { day: "Wednesday", focus: "Legs & Core", details: { "Warm-up": "Cycling 5 min + leg swings", "Exercise 1": "Squats (bodyweight/barbell) (3 sets x 10 reps)", "Exercise 2": "Leg Press (3 sets x 12 reps)", "Exercise 3": "Lunges (3 sets x 10 reps each leg)", "Core": "Plank/Crunches/Leg Raises/Russian Twist (core sets)", "Cardio": "—" }},
+        ];
+
+        const fullPlan = [];
+        for (let i = 0; i < 30; i++) {
+            const dayData = workoutData[(i) % 7];
+            fullPlan.push({
+                dayIndex: i,
+                dayName: dayData.day,
+                focus: dayData.focus,
+                details: dayData.details,
+                completed: false
+            });
+        }
+        
+        const today = new Date("2025-07-24T17:25:00");
+        const dayOfWeek = today.getDay(); 
+        const todayIndex = 0;
+
+        let currentWeek = 0;
+        let progressChart;
+        
+        const weeklyView = document.getElementById('weekly-view');
+        const weekTitle = document.getElementById('week-title');
+        const prevWeekBtn = document.getElementById('prev-week');
+        const nextWeekBtn = document.getElementById('next-week');
+        
+        const modal = document.getElementById('workout-modal');
+        const closeModalBtn = document.getElementById('close-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        const todayWorkoutCard = document.getElementById('today-workout-card');
+        const todayTitle = document.getElementById('today-title');
+        const todayDetails = document.getElementById('today-details');
+
+        function renderWeek(weekIndex) {
+            currentWeek = weekIndex;
+            weeklyView.innerHTML = '';
+            const startDay = weekIndex * 7;
+            const endDay = startDay + 7;
+            const weekData = fullPlan.slice(startDay, endDay);
+
+            weekTitle.textContent = `Week ${weekIndex + 1} (Days ${startDay + 1}-${Math.min(endDay, 30)})`;
+
+            weekData.forEach(day => {
+                const isRestDay = day.focus === 'Rest Day';
+                const card = document.createElement('div');
+                card.className = `day-card p-4 rounded-xl border-2 cursor-pointer relative ${day.completed ? 'completed' : 'bg-gray-50 border-gray-200'} ${day.dayIndex === todayIndex ? 'today-highlight' : ''}`;
+                card.dataset.dayIndex = day.dayIndex;
+                
+                let cardContent = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="day-title font-bold text-lg">${day.dayName}</p>
+                            <p class="text-sm text-gray-500">${day.focus}</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" class="h-5 w-5 rounded-full text-green-500 border-gray-300 focus:ring-green-500" ${day.completed ? 'checked' : ''} data-day-index="${day.dayIndex}">
+                        </div>
+                    </div>
+                `;
+                
+                if (isRestDay) {
+                    cardContent += `<div class="mt-4 text-center text-3xl">🧘</div>`;
+                } else {
+                    cardContent += `<div class="mt-4 text-center text-3xl">💪</div>`;
+                }
+
+                card.innerHTML = cardContent;
+                weeklyView.appendChild(card);
+            });
+
+            prevWeekBtn.disabled = weekIndex === 0;
+            nextWeekBtn.disabled = endDay >= 30;
+        }
+        
+        function openModal(dayIndex) {
+            const day = fullPlan[dayIndex];
+            modalTitle.textContent = `${day.dayName}: ${day.focus}`;
+            modalBody.innerHTML = '';
+            
+            for (const [key, value] of Object.entries(day.details)) {
+                const detailEl = document.createElement('div');
+                detailEl.innerHTML = `<p><strong class="font-semibold text-gray-800">${key}:</strong> ${value}</p>`;
+                modalBody.appendChild(detailEl);
+            }
+            
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            modal.querySelector('.modal-content').classList.remove('scale-95');
+        }
+
+        function closeModal() {
+            modal.classList.add('opacity-0', 'pointer-events-none');
+            modal.querySelector('.modal-content').classList.add('scale-95');
+        }
+
+        function updateProgress() {
+            const completedCount = fullPlan.filter(day => day.completed).length;
+            const remainingCount = 30 - completedCount;
+            
+            progressChart.data.datasets[0].data = [completedCount, remainingCount];
+            progressChart.update();
+        }
+
+        function renderToday() {
+            const todayData = fullPlan[todayIndex];
+            todayTitle.textContent = `${todayData.dayName}: ${todayData.focus}`;
+            todayDetails.innerHTML = '';
+            for (const [key, value] of Object.entries(todayData.details)) {
+                const p = document.createElement('p');
+                p.innerHTML = `<strong class="font-semibold text-gray-800">${key}:</strong> ${value}`;
+                todayDetails.appendChild(p);
+            }
+        }
+
+        function createChart() {
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            progressChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'Remaining'],
+                    datasets: [{
+                        data: [0, 30],
+                        backgroundColor: ['#22C55E', '#E5E7EB'],
+                        borderColor: ['#FDFBF8'],
+                        borderWidth: 4,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%',
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            enabled: true
+                        }
+                    }
+                }
+            });
+        }
+
+        prevWeekBtn.addEventListener('click', () => renderWeek(currentWeek - 1));
+        nextWeekBtn.addEventListener('click', () => renderWeek(currentWeek + 1));
+        
+        weeklyView.addEventListener('click', (e) => {
+            const card = e.target.closest('.day-card');
+            if (!card) return;
+
+            const dayIndex = parseInt(card.dataset.dayIndex);
+
+            if (e.target.type === 'checkbox') {
+                fullPlan[dayIndex].completed = e.target.checked;
+                card.classList.toggle('completed', e.target.checked);
+                updateProgress();
+            } else {
+                openModal(dayIndex);
+            }
+        });
+
+        closeModalBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderWeek(0);
+            createChart();
+            renderToday();
+            updateProgress();
+        });
+
+    </script>
+</body>
+</html>
