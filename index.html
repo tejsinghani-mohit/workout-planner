@@ -135,10 +135,26 @@
         let currentUserId = null;
         let isAuthAndDbReady = false;
 
-        // Global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- START YOUR EDITS HERE FOR GITHUB PAGES DEPLOYMENT ---
+        // REPLACE THIS firebaseConfig with your ACTUAL project's config from Firebase Console.
+        // Go to Firebase Console -> Project settings (gear icon) -> "Your apps" section -> select your Web app.
+        const firebaseConfig = {
+          apiKey: "AIzaSyCu8-euGnbMCgH7N6EHco9SSe3pydNEsYM", // <-- PASTE YOUR API KEY HERE
+          authDomain: "my-workout-tracker-3fc32.firebaseapp.com", // <-- PASTE YOUR AUTH DOMAIN HERE
+          projectId: "my-workout-tracker-3fc32", // <-- PASTE YOUR PROJECT ID HERE
+          storageBucket: "my-workout-tracker-3fc32.firebasestorage.app", // <-- PASTE YOUR STORAGE BUCKET HERE
+          messagingSenderId: "306733497894", // <-- PASTE YOUR MESSAGING SENDER ID HERE
+          appId: "1:306733497894:web:88ddc7964d2cbe87d930e7", // <-- PASTE YOUR APP ID HERE
+          // measurementId: "YOUR_MEASUREMENT_ID" // <-- OPTIONAL: If you use Google Analytics, paste here
+        };
+
+        // For GitHub Pages, derive appId from projectId
+        const appId = firebaseConfig.projectId;
+
+        // On GitHub Pages, there is no __initial_auth_token. Set to null to force anonymous sign-in.
+        const initialAuthToken = null;
+        // --- END YOUR EDITS HERE ---
+
 
         // Define the base workout data, starting from Monday for consistent weekly display
         const workoutDataStandardWeek = [
@@ -306,11 +322,8 @@
                         loadProgressFromFirestore(); 
                     } else {
                         try {
-                            if (initialAuthToken) {
-                                await retryOperation(() => signInWithCustomToken(auth, initialAuthToken));
-                            } else {
-                                await retryOperation(() => signInAnonymously(auth));
-                            }
+                            // Since initialAuthToken is null for GitHub Pages, this will always try anonymous sign-in
+                            await retryOperation(() => signInAnonymously(auth));
                             // If sign-in succeeds here, onAuthStateChanged will fire again with a user,
                             // which then proceeds to loadProgressFromFirestore.
                         } catch (anonError) {
