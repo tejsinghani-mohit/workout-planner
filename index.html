@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Chosen Palette: Warm Neutrals -->
     <!-- Application Structure Plan: The application is designed as an interactive weekly dashboard. The primary view shows the current week's schedule in a 7-day grid, which is a highly intuitive structure for planning. Users can navigate between weeks. Clicking on a day reveals detailed workout information in a modal, preventing context loss and keeping the interface clean. A prominent "Today's Workout" card provides immediate, actionable information. Progress is tracked via checkboxes, which dynamically update a summary chart. This structure was chosen to transform a static plan into a dynamic, motivating, and easy-to-navigate tool that aligns with how users typically manage schedules. -->
-    <!-- Visualization & Content Choices: Report Info: Daily workout schedule. -> Goal: Organize & Inform. -> Viz/Presentation: Interactive weekly grid of cards (HTML/Tailwind) with a modal (JS-driven) for details. -> Interaction: Click card to see details. -> Justification: Breaks down the year-long plan into manageable weekly chunks, preventing overwhelm. The modal keeps the user on the main dashboard. | Report Info: Workout completion. -> Goal: Engage & Motivate. -> Viz/Presentation: Checkboxes on each card and a donut chart (Chart.js). -> Interaction: Click checkbox to mark day complete, chart updates automatically. -> Justification: Provides instant visual feedback and a sense of accomplishment, encouraging continued engagement with the plan. -->
+    <!-- Visualization & Content Choices: Report Info: Daily workout schedule. -> Goal: Organize & Inform. -> Viz/Presentation: Interactive weekly grid of cards (HTML/Tailwind) with a modal (JS-driven) for details. -> Interaction: Click card to see details. -> Justification: Breaks down the year-long plan into manageable weekly chunks, preventing overwhelm. The modal keeps the user on the main dashboard. | Report Info: Workout completion. -> Goal: Engage & Motivate. -> Viz/Presentation: Checkboxes on each card and a donut chart (Chart.js). -> Interaction: Click checkbox to mark day complete, chart updates automatically. -> Justification: Provides instant visual feedback and a sense of accomplishment, encouraging engagement with the plan. -->
     <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
         body {
@@ -53,24 +53,28 @@
             height: 300px;
             max-height: 300px;
         }
-        #loading-overlay {
+        #loading-overlay, #auth-page {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(255, 255, 255, 0.95); /* More opaque */
-            display: flex;
+            background-color: #FDFBF8; /* Consistent with body background */
+            display: flex; /* Always start as flex for these */
             justify-content: center;
             align-items: center;
-            z-index: 1000; /* Higher z-index */
-            font-size: 1.5rem; /* Clearer text */
+            z-index: 1000; /* Ensure it's on top */
+            font-size: 1.5rem;
             color: #4A4A4A;
-            pointer-events: auto; /* Ensure it blocks interaction */
+            /* pointer-events is handled by .hidden */
         }
         #app {
-            position: relative; /* Ensure app stacks correctly when visible */
-            z-index: 10;
+            position: relative;
+            z-index: 10; /* Lower than overlay */
+        }
+        .hidden {
+            display: none !important;
+            pointer-events: none !important; /* Crucial: ensure it's not interactive when hidden */
         }
     </style>
 </head>
@@ -78,12 +82,29 @@
 
     <div id="loading-overlay">Loading your workout plan...</div>
 
+    <div id="auth-page" class="hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-xl border border-gray-200 w-full max-w-md text-center">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6">Welcome!</h2>
+            <p class="text-gray-600 mb-6">Sign in or create an account to track your fitness journey.</p>
+            <div class="space-y-4">
+                <input type="email" id="auth-email" placeholder="Email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <input type="password" id="auth-password" placeholder="Password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <p id="auth-error-message" class="error-message hidden"></p>
+            <div class="flex flex-col sm:flex-row gap-4 mt-6">
+                <button id="signup-button" class="w-full sm:w-1/2 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Sign Up</button>
+                <button id="signin-button" class="w-full sm:w-1/2 bg-gray-200 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Sign In</button>
+            </div>
+        </div>
+    </div>
+
     <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8 hidden">
         
         <header class="text-center mb-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">Your Year-Long Fitness Journey (2025)</h1>
             <p class="mt-2 text-lg text-gray-600">Stay consistent, track your progress, and achieve your goals.</p>
             <p id="user-id-display" class="mt-2 text-sm text-gray-500"></p>
+            <button id="signout-button" class="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm">Sign Out</button>
         </header>
 
         <main>
@@ -119,7 +140,7 @@
 
     </div>
 
-    <div id="workout-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
+    <div id="workout-modal" class="modal fixed inset-0 bg-black bg-opacity50 flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none">
         <div class="modal-content bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6 sm:p-8 transform scale-95">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="modal-title" class="text-2xl font-bold text-gray-800"></h3>
@@ -132,13 +153,14 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         
         let db;
         let auth;
         let currentUserId = null;
         let isAuthAndDbReady = false;
+        let unsubscribeFromFirestore = null; // Variable to hold the unsubscribe function
 
         // --- IMPORTANT: START YOUR EDITS HERE FOR GITHUB PAGES DEPLOYMENT ---
         // YOU MUST REPLACE ALL "YOUR_..." PLACEHOLDER VALUES BELOW WITH YOUR ACTUAL, EXACT CONFIGURATION FROM FIREBASE CONSOLE.
@@ -166,7 +188,7 @@ const firebaseConfig = {
         const appId = firebaseConfig.projectId;
 
         // On GitHub Pages, there is no __initial_auth_token. Set to null to force anonymous sign-in.
-        const initialAuthToken = null;
+        const initialAuthToken = null; // This is now unused for email/password auth
         // --- IMPORTANT: END YOUR EDITS HERE ---
 
 
@@ -187,27 +209,29 @@ const firebaseConfig = {
         const TOTAL_DAYS_IN_PLAN = Math.ceil((PLAN_END_DATE - PLAN_START_DATE) / (1000 * 60 * 60 * 24)) + 1; // +1 to include the end date itself
 
         // Populate the full year-long plan based on the standard week cycle
-        let fullPlan = []; // Make mutable to load from Firestore
-        for (let i = 0; i < TOTAL_DAYS_IN_PLAN; i++) {
-            // Determine the starting day for the fullPlan to be Thursday, as per user prompt "today is Thursday"
-            // The workoutDataStandardWeek is Monday-indexed (0=Mon, 3=Thu).
-            // So, for day 0 of the fullPlan (which is Thursday), we map to workoutDataStandardWeek[3].
-            // For day 1 of fullPlan (Friday), we map to workoutDataStandardWeek[4], etc.
-            const adjustedIndex = (i + 3) % 7; // +3 to shift from Mon-indexed (0) to Thu-indexed (0 for fullPlan)
-            const dayData = workoutDataStandardWeek[adjustedIndex];
-            
-            fullPlan.push({
-                dayIndex: i, // 0-TOTAL_DAYS_IN_PLAN-1 representing the days of the plan
-                dayName: dayData.day,
-                focus: dayData.focus,
-                details: dayData.details,
-                completed: false
-            });
+        // This initial fullPlan will be overridden by Firestore data if available
+        let fullPlan = []; 
+        function initializeDefaultPlan() {
+            fullPlan = []; // Reset to empty before re-populating
+            for (let i = 0; i < TOTAL_DAYS_IN_PLAN; i++) {
+                const adjustedIndex = (i + 3) % 7; 
+                const dayData = workoutDataStandardWeek[adjustedIndex];
+                
+                fullPlan.push({
+                    dayIndex: i, 
+                    dayName: dayData.day,
+                    focus: dayData.focus,
+                    details: dayData.details,
+                    completed: false
+                });
+            }
         }
-        
-        const todayIndex = 0; // Represents the 0th day of the plan, which is "today" (Thursday)
+        initializeDefaultPlan(); // Call initially to set up the default plan
 
-        let currentWeek = 0; // This will track the *calendar week offset* from the week containing todayIndex.
+
+        const todayIndex = 0; 
+
+        let currentWeek = 0; 
         let progressChart;
         
         const weeklyView = document.getElementById('weekly-view');
@@ -225,15 +249,26 @@ const firebaseConfig = {
         const todayDetails = document.getElementById('today-details');
         const progressChartExplanation = document.getElementById('progress-chart-explanation');
         const loadingOverlay = document.getElementById('loading-overlay');
+        const authPage = document.getElementById('auth-page');
         const appContainer = document.getElementById('app');
-        const userIdDisplay = document.getElementById('user-id-display');
+        const userIdDisplay = document.getElementById('user-id-display'); 
+
+
+        // Auth elements
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const signupButton = document.getElementById('signup-button');
+        const signinButton = document.getElementById('signin-button');
+        const signoutButton = document.getElementById('signout-button');
+        const authErrorMessage = document.getElementById('auth-error-message');
+
 
         // Map of day names to their index in a Monday-Sunday week (Monday=0, Sunday=6)
         const dayMapStandardWeek = {
             "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
         };
 
-        let loadingTimeout; // Declare a variable for the timeout
+        let loadingTimeout; 
 
         // Utility for exponential backoff retry
         async function retryOperation(operation, maxRetries = 5, delay = 1000) {
@@ -251,8 +286,8 @@ const firebaseConfig = {
         }
 
         async function saveProgressToFirestore() {
-            if (!isAuthAndDbReady) {
-                console.warn("Firestore not ready, skipping save.");
+            if (!isAuthAndDbReady || !currentUserId) {
+                console.warn("Firestore not ready or user not authenticated, skipping save.");
                 return;
             }
             try {
@@ -263,11 +298,21 @@ const firebaseConfig = {
             }
         }
 
+        let currentFirestoreUnsubscribe = null; // Store the unsubscribe function
+
         async function loadProgressFromFirestore() {
-            if (!isAuthAndDbReady) {
-                console.warn("Firestore not ready, skipping load.");
-                loadingOverlay.style.display = 'none'; // Ensure overlay is hidden even if not fully ready
+            // If there's an active listener, unsubscribe first to prevent duplicates or errors
+            if (currentFirestoreUnsubscribe) {
+                currentFirestoreUnsubscribe();
+                currentFirestoreUnsubscribe = null; // Clear the reference
+            }
+
+            if (!isAuthAndDbReady || !currentUserId) {
+                console.warn("Firestore not ready or user not authenticated, skipping load.");
+                loadingOverlay.classList.add('hidden'); 
                 appContainer.classList.remove('hidden');
+                // Ensure default plan is loaded and rendered if not authenticated
+                initializeDefaultPlan(); // Reset fullPlan to default
                 renderWeek(currentWeek); 
                 renderToday();
                 return;
@@ -275,16 +320,17 @@ const firebaseConfig = {
             try {
                 const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/workoutProgress/userProgress`);
                 
-                // Use onSnapshot for real-time updates and initial load
-                onSnapshot(userDocRef, (docSnap) => {
-                    clearTimeout(loadingTimeout); // Clear timeout once onSnapshot fires its first callback
-                    loadingOverlay.style.display = 'none'; // Hide overlay immediately on data load
-                    appContainer.classList.remove('hidden'); // Show the app container
+                // Assign the unsubscribe function to the global variable
+                currentFirestoreUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                    clearTimeout(loadingTimeout); 
+                    loadingOverlay.classList.add('hidden'); 
+                    appContainer.classList.remove('hidden'); 
 
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         if (data && data.planData) {
                             const loadedPlan = JSON.parse(data.planData);
+                            // Ensure loadedPlan structure matches fullPlan template
                             fullPlan.forEach((day, index) => {
                                 if (loadedPlan[index] && loadedPlan[index].dayIndex === day.dayIndex) {
                                     day.completed = loadedPlan[index].completed;
@@ -293,91 +339,171 @@ const firebaseConfig = {
                         }
                     } else {
                         console.log("No existing workout plan found in Firestore. Using default plan.");
+                        // If no plan found, ensure fullPlan is based on default template
+                        initializeDefaultPlan();
                     }
                     renderWeek(currentWeek);
                     renderToday();
                 }, (error) => {
-                    // This callback handles errors from the listener itself, e.g., permission denied after initial auth
-                    clearTimeout(loadingTimeout); // Clear timeout on onSnapshot error
+                    clearTimeout(loadingTimeout); 
                     console.error("Error listening to Firestore updates:", error);
                     loadingOverlay.textContent = "Error loading plan. Please check console for details.";
-                    loadingOverlay.style.display = 'flex'; // Keep error message visible
-                    appContainer.classList.add('hidden'); // Keep app hidden
+                    loadingOverlay.classList.remove('hidden'); 
+                    appContainer.classList.add('hidden'); 
                 });
 
             } catch (error) {
-                // This catch block handles errors if the onSnapshot setup itself fails (less common)
-                clearTimeout(loadingTimeout); // Clear timeout on error setting up listener
+                clearTimeout(loadingTimeout); 
                 console.error("Error setting up Firestore listener:", error);
                 loadingOverlay.textContent = "Error setting up Firestore. Please check console for details.";
-                loadingOverlay.style.display = 'flex'; // Keep error message visible
-                appContainer.classList.add('hidden'); // Keep app hidden
+                loadingOverlay.classList.remove('hidden'); 
+                appContainer.classList.add('hidden'); 
             }
         }
 
-        async function signInFirebaseAndLoadData() {
+        function displayAuthError(message) {
+            authErrorMessage.textContent = message;
+            authErrorMessage.classList.remove('hidden');
+        }
+
+        function hideAuthError() {
+            authErrorMessage.classList.add('hidden');
+        }
+
+        async function handleSignUp() {
+            hideAuthError();
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+
+            // Client-side validation
+            if (!email || !email.includes('@') || !email.includes('.')) {
+                displayAuthError("Please enter a valid email address.");
+                return;
+            }
+            if (!password || password.length < 6) {
+                displayAuthError("Password must be at least 6 characters long.");
+                return;
+            }
+
             try {
-                // Perform a strict check for placeholders in firebaseConfig
+                console.log("Attempting signup for:", email); 
+                await retryOperation(() => createUserWithEmailAndPassword(auth, email, password));
+                console.log("Signup successful!"); 
+            } catch (error) {
+                console.error("Signup error:", error); 
+                displayAuthError(error.message); 
+            }
+        }
+
+        async function handleSignIn() {
+            hideAuthError();
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+
+            // Client-side validation
+            if (!email || !email.includes('@') || !email.includes('.')) {
+                displayAuthError("Please enter a valid email address.");
+                return;
+            }
+            if (!password || password.length < 6) {
+                displayAuthError("Password must be at least 6 characters long.");
+                return;
+            }
+
+            try {
+                console.log("Attempting sign-in for:", email); 
+                await retryOperation(() => signInWithEmailAndPassword(auth, email, password));
+                console.log("Sign-in successful!"); 
+            } catch (error) {
+                console.error("Sign-in error:", error); 
+                displayAuthError(error.message); 
+            }
+        }
+
+        async function handleSignOut() {
+            try {
+                // Unsubscribe from Firestore listener before signing out
+                if (currentFirestoreUnsubscribe) {
+                    currentFirestoreUnsubscribe();
+                    currentFirestoreUnsubscribe = null;
+                }
+                await signOut(auth);
+                // onAuthStateChanged will handle the UI transition
+            } catch (error) {
+                console.error("Error signing out:", error);
+            }
+        }
+
+        async function initializeFirebaseAndAuth() {
+            try {
                 if (!firebaseConfig || !firebaseConfig.apiKey || 
-                    firebaseConfig.apiKey === "YOUR_API_KEY" || // Check for the literal placeholder string
-                    firebaseConfig.authDomain === "YOUR_AUTH_DOMAIN" || // Check for the literal placeholder string
-                    firebaseConfig.projectId === "YOUR_PROJECT_ID") { // Check for the literal placeholder string
+                    firebaseConfig.apiKey === "YOUR_API_KEY" || 
+                    firebaseConfig.authDomain === "YOUR_AUTH_DOMAIN" ||
+                    firebaseConfig.projectId === "YOUR_PROJECT_ID") {
                     
-                    clearTimeout(loadingTimeout); // Ensure timeout is cleared
+                    clearTimeout(loadingTimeout);
                     console.error("Firebase Initialization Error: firebaseConfig is missing or contains placeholders. Please update firebaseConfig in your HTML file with actual values from Firebase Console.");
                     loadingOverlay.textContent = "Error: Firebase config invalid. See console for exact details.";
-                    loadingOverlay.style.display = 'flex'; // Explicitly show error
-                    appContainer.classList.add('hidden'); // Ensure app is hidden
-                    return; // Stop execution if config is bad
+                    loadingOverlay.classList.remove('hidden'); 
+                    authPage.classList.add('hidden'); 
+                    appContainer.classList.add('hidden'); 
+                    return; 
                 }
 
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Set a timeout to hide loading overlay if Firebase doesn't respond quickly
                 loadingTimeout = setTimeout(() => {
-                    if (!isAuthAndDbReady) {
-                        console.warn("Firebase authentication or data loading timed out. Displaying default plan.");
-                        loadingOverlay.textContent = "Timed out. Using default plan. (Saved progress not loaded)";
-                        loadingOverlay.style.display = 'flex'; // Keep timeout message visible
-                        appContainer.classList.remove('hidden'); // Show the app with default data
+                    if (!auth.currentUser) { 
+                        console.warn("Firebase authentication timed out. Displaying sign-in page.");
+                        loadingOverlay.classList.add('hidden'); 
+                        authPage.classList.remove('hidden');   
+                        appContainer.classList.add('hidden');  
                     }
-                }, 10000); // 10 seconds timeout
+                }, 10000); 
 
                 onAuthStateChanged(auth, async (user) => {
+                    console.log("onAuthStateChanged fired. User:", user ? user.uid : "null"); 
+                    clearTimeout(loadingTimeout); 
+
+                    loadingOverlay.classList.add('hidden'); 
+                    authPage.classList.add('hidden');       
+                    appContainer.classList.add('hidden');   
+
                     if (user) {
+                        console.log("User is logged in. Showing app."); 
                         currentUserId = user.uid;
-                        userIdDisplay.textContent = `Your User ID: ${currentUserId}`;
+                        const username = user.email ? user.email.split('@')[0] : 'Guest';
+                        userIdDisplay.textContent = `Hello, ${username}!`; 
                         isAuthAndDbReady = true;
-                        // Only load data once auth is ready and user is known
+                        appContainer.classList.remove('hidden'); 
                         loadProgressFromFirestore(); 
                     } else {
-                        // If no user is signed in yet, try anonymous sign-in
-                        try {
-                            await retryOperation(() => signInAnonymously(auth));
-                            // onAuthStateChanged will be triggered again with the new user
-                        } catch (anonError) {
-                            clearTimeout(loadingTimeout); // Clear timeout on sign-in error
-                            console.error("Error signing in anonymously:", anonError);
-                            if (anonError.code === 'auth/api-key-not-valid') {
-                                loadingOverlay.textContent = "Auth Error: API Key invalid. Update firebaseConfig in HTML.";
-                            } else if (anonError.code === 'auth/network-request-failed') {
-                                loadingOverlay.textContent = "Network error during sign-in. Check internet.";
-                            } else {
-                                loadingOverlay.textContent = "Failed to sign in. See console for details.";
-                            }
-                            loadingOverlay.style.display = 'flex'; // Keep error message visible
-                            appContainer.classList.add('hidden'); // Keep app hidden
+                        console.log("User is logged out. Showing auth page."); 
+                        currentUserId = null;
+                        isAuthAndDbReady = false;
+                        // Unsubscribe from any active listener when user logs out
+                        if (currentFirestoreUnsubscribe) {
+                            currentFirestoreUnsubscribe();
+                            currentFirestoreUnsubscribe = null;
                         }
+                        initializeDefaultPlan(); // Reset fullPlan to default
+                        authPage.classList.remove('hidden'); 
+                        authEmailInput.value = '';
+                        authPasswordInput.value = '';
+                        renderWeek(currentWeek); // Re-render with default plan
+                        renderToday();
+                        updateProgress(); // Update progress chart for default
                     }
                 });
             } catch (firebaseInitError) {
-                clearTimeout(loadingTimeout); // Clear timeout on Firebase init error
-                console.error("Error initializing Firebase:", firebaseInitError);
+                clearTimeout(loadingTimeout); 
+                console.error("Error initializing Firebase:", firebaseInitError); 
                 loadingOverlay.textContent = "Init Error: Firebase not initialized. Config issue?";
-                loadingOverlay.style.display = 'flex'; // Keep error message visible
-                appContainer.classList.add('hidden'); // Keep app hidden
+                loadingOverlay.classList.remove('hidden'); 
+                authPage.classList.add('hidden'); 
+                appContainer.classList.add('hidden'); 
             }
         }
 
@@ -599,9 +725,14 @@ const firebaseConfig = {
             }
         });
 
+        signupButton.addEventListener('click', handleSignUp);
+        signinButton.addEventListener('click', handleSignIn);
+        signoutButton.addEventListener('click', handleSignOut);
+
+
         document.addEventListener('DOMContentLoaded', () => {
             createChart();
-            signInFirebaseAndLoadData();
+            initializeFirebaseAndAuth();
         });
 
     </script>
