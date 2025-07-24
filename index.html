@@ -53,32 +53,16 @@
             height: 300px;
             max-height: 300px;
         }
-        #loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-            font-size: 1.25rem;
-            color: #4A4A4A;
-        }
     </style>
 </head>
 <body class="antialiased">
 
-    <div id="loading-overlay">Loading your workout plan...</div>
-
-    <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8 hidden">
+    <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8">
         
         <header class="text-center mb-8">
             <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">Your Year-Long Fitness Journey (2025)</h1>
             <p class="mt-2 text-lg text-gray-600">Stay consistent, track your progress, and achieve your goals.</p>
-            <p id="user-id-display" class="mt-2 text-sm text-gray-500"></p>
+            <!-- User ID display removed as local storage is per browser -->
         </header>
 
         <main>
@@ -125,42 +109,7 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-        let db;
-        let auth;
-        let currentUserId = null;
-        let isAuthAndDbReady = false;
-
-        // --- IMPORTANT: START YOUR EDITS HERE FOR GITHUB PAGES DEPLOYMENT ---
-        // You MUST replace the placeholder values below with your ACTUAL project's config from Firebase Console.
-        // Steps to get your config:
-        // 1. Go to Firebase Console (console.firebase.google.com) and select your project.
-        // 2. Click on "Project settings" (the gear icon next to "Project overview").
-        // 3. Scroll down to the "Your apps" section.
-        // 4. Select your Web app (click the </> icon).
-        // 5. Copy the 'firebaseConfig' object shown there and paste it below, replacing this entire block.
-        const firebaseConfig = {
-          apiKey: "AIzaSyCu8-euGnbMCgH7N6EHco9SSe3pydNEsYM",
-          authDomain: "my-workout-tracker-3fc32.firebaseapp.com",
-          projectId: "my-workout-tracker-3fc32",
-          storageBucket: "my-workout-tracker-3fc32.firebasestorage.app",
-          messagingSenderId: "306733497894",
-          appId: "1:306733497894:web:88ddc7964d2cbe87d930e7"
-        };
-
-        // On GitHub Pages, 'appId' is not automatically passed from Canvas environment,
-        // so we derive it from the 'projectId' in your firebaseConfig.
-        const appId = firebaseConfig.projectId;
-
-        // On GitHub Pages, there is no __initial_auth_token. Set to null to force anonymous sign-in.
-        const initialAuthToken = null;
-        // --- IMPORTANT: END YOUR EDITS HERE ---
-
-
+    <script>
         // Define the base workout data, starting from Monday for consistent weekly display
         const workoutDataStandardWeek = [
             { day: "Monday", focus: "Chest & Cardio", details: { "Warm-up": "Treadmill 5 min + arm circles", "Exercise 1": "Bench Press (3 sets x 12 reps)", "Exercise 2": "Incline Dumbbell Press (3 sets x 12 reps)", "Exercise 3": "Cable Fly / Pec Deck (3 sets x 15 reps)", "Core": "Plank (3 sets x 60s), Russian Twist (3 sets x 20 reps), Leg Raises (3 sets x 15 reps)", "Cardio": "Incline walk / cross-trainer 20 min" }},
@@ -178,17 +127,13 @@
         const TOTAL_DAYS_IN_PLAN = Math.ceil((PLAN_END_DATE - PLAN_START_DATE) / (1000 * 60 * 60 * 24)) + 1; // +1 to include the end date itself
 
         // Populate the full year-long plan based on the standard week cycle
-        let fullPlan = []; // Make mutable to load from Firestore
+        let fullPlan = []; 
         for (let i = 0; i < TOTAL_DAYS_IN_PLAN; i++) {
-            // Determine the starting day for the fullPlan to be Thursday, as per user prompt "today is Thursday"
-            // The workoutDataStandardWeek is Monday-indexed (0=Mon, 3=Thu).
-            // So, for day 0 of the fullPlan (which is Thursday), we map to workoutDataStandardWeek[3].
-            // For day 1 of fullPlan (Friday), we map to workoutDataStandardWeek[4], etc.
-            const adjustedIndex = (i + 3) % 7; // +3 to shift from Mon-indexed (0) to Thu-indexed (0 for fullPlan)
+            const adjustedIndex = (i + 3) % 7; 
             const dayData = workoutDataStandardWeek[adjustedIndex];
             
             fullPlan.push({
-                dayIndex: i, // 0-TOTAL_DAYS_IN_PLAN-1 representing the days of the plan
+                dayIndex: i, 
                 dayName: dayData.day,
                 focus: dayData.focus,
                 details: dayData.details,
@@ -196,9 +141,9 @@
             });
         }
         
-        const todayIndex = 0; // Represents the 0th day of the plan, which is "today" (Thursday)
+        const todayIndex = 0; 
 
-        let currentWeek = 0; // This will track the *calendar week offset* from the week containing todayIndex.
+        let currentWeek = 0; 
         let progressChart;
         
         const weeklyView = document.getElementById('weekly-view');
@@ -215,162 +160,50 @@
         const todayTitle = document.getElementById('today-title');
         const todayDetails = document.getElementById('today-details');
         const progressChartExplanation = document.getElementById('progress-chart-explanation');
-        const loadingOverlay = document.getElementById('loading-overlay');
+        // Removed loading overlay related elements and logic
         const appContainer = document.getElementById('app');
-        const userIdDisplay = document.getElementById('user-id-display');
 
         // Map of day names to their index in a Monday-Sunday week (Monday=0, Sunday=6)
         const dayMapStandardWeek = {
             "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
         };
 
-        let loadingTimeout; // Declare a variable for the timeout
-
-        // Utility for exponential backoff retry
-        async function retryOperation(operation, maxRetries = 5, delay = 1000) {
-            for (let i = 0; i < maxRetries; i++) {
-                try {
-                    return await operation();
-                } catch (error) {
-                    if (i === maxRetries - 1) {
-                        console.error(`Failed after ${maxRetries} retries:`, error);
-                        throw error;
-                    }
-                    await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
-                }
+        // --- Local Storage Functions ---
+        function saveProgressToLocalStorage() {
+            try {
+                localStorage.setItem('workoutPlanProgress', JSON.stringify(fullPlan));
+            } catch (e) {
+                console.error("Error saving to local storage:", e);
+                alert("Error: Could not save progress. Your browser's local storage might be full or blocked.");
             }
         }
 
-        async function saveProgressToFirestore() {
-            if (!isAuthAndDbReady) {
-                console.warn("Firestore not ready, skipping save.");
-                return;
-            }
+        function loadProgressFromLocalStorage() {
             try {
-                const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/workoutProgress/userProgress`);
-                await retryOperation(() => setDoc(userDocRef, { planData: JSON.stringify(fullPlan) }));
-            } catch (error) {
-                console.error("Error saving progress to Firestore:", error);
-            }
-        }
-
-        async function loadProgressFromFirestore() {
-            if (!isAuthAndDbReady) {
-                console.warn("Firestore not ready, skipping load.");
-                // Ensure UI is displayed even if not ready to avoid indefinite loading
-                loadingOverlay.classList.add('hidden'); 
-                appContainer.classList.remove('hidden');
-                renderWeek(currentWeek); 
-                renderToday();
-                return;
-            }
-            try {
-                const userDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/workoutProgress/userProgress`);
-                
-                onSnapshot(userDocRef, (docSnap) => {
-                    clearTimeout(loadingTimeout); // Clear timeout once onSnapshot fires its first callback
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        if (data && data.planData) {
-                            const loadedPlan = JSON.parse(data.planData);
-                            fullPlan.forEach((day, index) => {
-                                if (loadedPlan[index] && loadedPlan[index].dayIndex === day.dayIndex) {
-                                    day.completed = loadedPlan[index].completed;
-                                }
-                            });
+                const savedPlan = localStorage.getItem('workoutPlanProgress');
+                if (savedPlan) {
+                    const loadedPlan = JSON.parse(savedPlan);
+                    // Merge loaded completion status with the default fullPlan
+                    fullPlan.forEach((day, index) => {
+                        if (loadedPlan[index] && loadedPlan[index].dayIndex === day.dayIndex) {
+                            day.completed = loadedPlan[index].completed;
                         }
-                    } else {
-                        console.log("No existing workout plan found in Firestore. Using default plan.");
-                    }
-                    renderWeek(currentWeek);
-                    renderToday();
-                    loadingOverlay.classList.add('hidden');
-                    appContainer.classList.remove('hidden');
-                }, (error) => {
-                    clearTimeout(loadingTimeout); // Clear timeout on onSnapshot error
-                    console.error("Error listening to Firestore updates:", error);
-                    loadingOverlay.textContent = "Error loading plan. Please check console for details.";
-                    loadingOverlay.classList.remove('hidden');
-                    appContainer.classList.add('hidden');
-                });
-
-            } catch (error) {
-                clearTimeout(loadingTimeout); // Clear timeout on error setting up listener
-                console.error("Error setting up Firestore listener:", error);
-                loadingOverlay.textContent = "Error setting up Firestore. Please check console for details.";
-                loadingOverlay.classList.remove('hidden');
-                appContainer.classList.add('hidden');
-            }
-        }
-
-        async function signInFirebaseAndLoadData() {
-            try {
-                // Initialize Firebase app with the provided (or user-pasted) config
-                // Check if firebaseConfig has actual values before initializing
-                if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes("YOUR_API_KEY")) {
-                    clearTimeout(loadingTimeout);
-                    console.error("Firebase Initialization Error: firebaseConfig is missing or contains placeholders. Please update firebaseConfig in your HTML file with actual values from Firebase Console.");
-                    loadingOverlay.textContent = "Error: Firebase configuration missing/invalid. Check console.";
-                    loadingOverlay.classList.remove('hidden');
-                    appContainer.classList.add('hidden');
-                    return; // Stop execution if config is bad
+                    });
+                } else {
+                    console.log("No existing workout plan found in Local Storage. Using default plan.");
                 }
-
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                // Set a timeout to hide loading overlay if Firebase doesn't respond quickly
-                loadingTimeout = setTimeout(() => {
-                    if (!isAuthAndDbReady) {
-                        console.warn("Firebase authentication or data loading timed out. Displaying default plan.");
-                        loadingOverlay.textContent = "Failed to load saved plan. Using default. (Connection timed out)";
-                        loadingOverlay.classList.remove('hidden');
-                        appContainer.classList.remove('hidden');
-                        renderWeek(currentWeek); // Ensure UI renders with default data
-                        renderToday();
-                    }
-                }, 10000); // 10 seconds timeout
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        currentUserId = user.uid;
-                        userIdDisplay.textContent = `Your User ID: ${currentUserId}`;
-                        isAuthAndDbReady = true;
-                        loadProgressFromFirestore(); 
-                    } else {
-                        try {
-                            // Since initialAuthToken is null for GitHub Pages, this will always try anonymous sign-in
-                            await retryOperation(() => signInAnonymously(auth));
-                        } catch (anonError) {
-                            clearTimeout(loadingTimeout); // Clear timeout on sign-in error
-                            console.error("Error signing in anonymously:", anonError);
-                            // More user-friendly message for API key error
-                            if (anonError.code === 'auth/api-key-not-valid') {
-                                loadingOverlay.textContent = "Error: Firebase API Key not valid. Please update your firebaseConfig in the HTML.";
-                            } else {
-                                loadingOverlay.textContent = "Failed to sign in. Please try again or check console for details.";
-                            }
-                            loadingOverlay.classList.remove('hidden');
-                            appContainer.classList.add('hidden');
-                        }
-                    }
-                });
-            } catch (firebaseInitError) {
-                clearTimeout(loadingTimeout); // Clear timeout on Firebase init error
-                console.error("Error initializing Firebase:", firebaseInitError);
-                // More user-friendly message for initialization error
-                loadingOverlay.textContent = "Failed to initialize Firebase. Ensure your firebaseConfig is correctly pasted in the HTML.";
-                loadingOverlay.classList.remove('hidden');
-                appContainer.classList.add('hidden');
+            } catch (e) {
+                console.error("Error loading from local storage:", e);
+                alert("Error: Could not load saved progress. Using default plan. Your browser's local storage might be corrupted.");
             }
         }
+        // --- End Local Storage Functions ---
+
 
         function renderWeek(calendarWeekOffset) {
             currentWeek = calendarWeekOffset;
             weeklyView.innerHTML = '';
 
-            // Get the day name of the plan's current 'today' (Thursday)
             const currentPlanDayName = fullPlan[todayIndex].dayName; 
             const dayIndexInStandardWeek = dayMapStandardWeek[currentPlanDayName];
 
@@ -571,7 +404,7 @@
             if (e.target.type === 'checkbox') {
                 fullPlan[dayIndex].completed = e.target.checked;
                 card.classList.toggle('completed', e.target.checked);
-                await saveProgressToFirestore();
+                saveProgressToLocalStorage(); // Save to local storage
                 updateProgress();
             } else {
                 openModal(dayIndex);
@@ -586,8 +419,11 @@
         });
 
         document.addEventListener('DOMContentLoaded', () => {
+            loadProgressFromLocalStorage(); // Load from local storage
             createChart();
-            signInFirebaseAndLoadData();
+            renderWeek(currentWeek); // Initial render
+            renderToday(); // Render today's workout
+            appContainer.classList.remove('hidden'); // Show the app now that data is loaded/defaulted
         });
 
     </script>
