@@ -135,9 +135,14 @@
         let currentUserId = null;
         let isAuthAndDbReady = false;
 
-        // --- START YOUR EDITS HERE FOR GITHUB PAGES DEPLOYMENT ---
-        // REPLACE THIS firebaseConfig with your ACTUAL project's config from Firebase Console.
-        // Go to Firebase Console -> Project settings (gear icon) -> "Your apps" section -> select your Web app.
+        // --- IMPORTANT: START YOUR EDITS HERE FOR GITHUB PAGES DEPLOYMENT ---
+        // You MUST replace the placeholder values below with your ACTUAL project's config from Firebase Console.
+        // Steps to get your config:
+        // 1. Go to Firebase Console (console.firebase.google.com) and select your project.
+        // 2. Click on "Project settings" (the gear icon next to "Project overview").
+        // 3. Scroll down to the "Your apps" section.
+        // 4. Select your Web app (click the </> icon).
+        // 5. Copy the 'firebaseConfig' object shown there and paste it below, replacing this entire block.
         const firebaseConfig = {
           apiKey: "AIzaSyCu8-euGnbMCgH7N6EHco9SSe3pydNEsYM",
           authDomain: "my-workout-tracker-3fc32.firebaseapp.com",
@@ -147,12 +152,13 @@
           appId: "1:306733497894:web:88ddc7964d2cbe87d930e7"
         };
 
-        // For GitHub Pages, derive appId from projectId
+        // On GitHub Pages, 'appId' is not automatically passed from Canvas environment,
+        // so we derive it from the 'projectId' in your firebaseConfig.
         const appId = firebaseConfig.projectId;
 
         // On GitHub Pages, there is no __initial_auth_token. Set to null to force anonymous sign-in.
         const initialAuthToken = null;
-        // --- END YOUR EDITS HERE ---
+        // --- IMPORTANT: END YOUR EDITS HERE ---
 
 
         // Define the base workout data, starting from Monday for consistent weekly display
@@ -251,8 +257,11 @@
         async function loadProgressFromFirestore() {
             if (!isAuthAndDbReady) {
                 console.warn("Firestore not ready, skipping load.");
-                loadingOverlay.classList.add('hidden'); // Hide if not ready
+                // Ensure UI is displayed even if not ready to avoid indefinite loading
+                loadingOverlay.classList.add('hidden'); 
                 appContainer.classList.remove('hidden');
+                renderWeek(currentWeek); 
+                renderToday();
                 return;
             }
             try {
@@ -296,6 +305,17 @@
 
         async function signInFirebaseAndLoadData() {
             try {
+                // Initialize Firebase app with the provided (or user-pasted) config
+                // Check if firebaseConfig has actual values before initializing
+                if (!firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes("YOUR_API_KEY")) {
+                    clearTimeout(loadingTimeout);
+                    console.error("Firebase Initialization Error: firebaseConfig is missing or contains placeholders. Please update firebaseConfig in your HTML file with actual values from Firebase Console.");
+                    loadingOverlay.textContent = "Error: Firebase configuration missing/invalid. Check console.";
+                    loadingOverlay.classList.remove('hidden');
+                    appContainer.classList.add('hidden');
+                    return; // Stop execution if config is bad
+                }
+
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -317,18 +337,20 @@
                         currentUserId = user.uid;
                         userIdDisplay.textContent = `Your User ID: ${currentUserId}`;
                         isAuthAndDbReady = true;
-                        // loadingTimeout is cleared in loadProgressFromFirestore's onSnapshot callback or error
                         loadProgressFromFirestore(); 
                     } else {
                         try {
                             // Since initialAuthToken is null for GitHub Pages, this will always try anonymous sign-in
                             await retryOperation(() => signInAnonymously(auth));
-                            // If sign-in succeeds here, onAuthStateChanged will fire again with a user,
-                            // which then proceeds to loadProgressFromFirestore.
                         } catch (anonError) {
                             clearTimeout(loadingTimeout); // Clear timeout on sign-in error
                             console.error("Error signing in anonymously:", anonError);
-                            loadingOverlay.textContent = "Failed to sign in. Please try again.";
+                            // More user-friendly message for API key error
+                            if (anonError.code === 'auth/api-key-not-valid') {
+                                loadingOverlay.textContent = "Error: Firebase API Key not valid. Please update your firebaseConfig in the HTML.";
+                            } else {
+                                loadingOverlay.textContent = "Failed to sign in. Please try again or check console for details.";
+                            }
                             loadingOverlay.classList.remove('hidden');
                             appContainer.classList.add('hidden');
                         }
@@ -337,7 +359,8 @@
             } catch (firebaseInitError) {
                 clearTimeout(loadingTimeout); // Clear timeout on Firebase init error
                 console.error("Error initializing Firebase:", firebaseInitError);
-                loadingOverlay.textContent = "Failed to initialize Firebase. Check console for details.";
+                // More user-friendly message for initialization error
+                loadingOverlay.textContent = "Failed to initialize Firebase. Ensure your firebaseConfig is correctly pasted in the HTML.";
                 loadingOverlay.classList.remove('hidden');
                 appContainer.classList.add('hidden');
             }
@@ -349,16 +372,10 @@
 
             // Get the day name of the plan's current 'today' (Thursday)
             const currentPlanDayName = fullPlan[todayIndex].dayName; 
-            // Get its index in the standard Monday-Sunday week (Thursday is index 3)
             const dayIndexInStandardWeek = dayMapStandardWeek[currentPlanDayName];
 
-            // Calculate the fullPlan index of the Monday for the current displayed calendar week.
-            // For calendarWeekOffset = 0, this calculates the Monday of the week containing `todayIndex`.
-            // Example: if todayIndex (Thursday) is 0, and Thursday is 3rd day of Mon-Sun (index 3),
-            // then Monday of this week would be at fullPlan index (0 - 3) = -3.
             const mondayOfCurrentDisplayedWeekPlanIndex = todayIndex - dayIndexInStandardWeek + (calendarWeekOffset * 7);
 
-            // Calculate the actual dates for the displayed week for the title and progress tracking
             const firstDayDisplayedDate = new Date(PLAN_START_DATE);
             firstDayDisplayedDate.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
             const lastDayDisplayedDate = new Date(firstDayDisplayedDate);
@@ -370,14 +387,13 @@
             const daysOfWeekLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
             for (let i = 0; i < 7; i++) {
-                const currentPlanIndex = mondayOfCurrentDisplayedWeekPlanIndex + i; // This is the index in the `fullPlan`
-                let dayDataForDisplay = fullPlan[currentPlanIndex]; // Can be `undefined` if outside plan range
+                const currentPlanIndex = mondayOfCurrentDisplayedWeekPlanIndex + i; 
+                let dayDataForDisplay = fullPlan[currentPlanIndex]; 
 
                 const card = document.createElement('div');
                 const isTodayCard = (currentPlanIndex === todayIndex);
 
                 if (!dayDataForDisplay || currentPlanIndex < 0 || currentPlanIndex >= TOTAL_DAYS_IN_PLAN) {
-                    // If the plan day index is outside the 0 to TOTAL_DAYS_IN_PLAN-1 range, it's a "No Workout" day for display.
                     card.className = `day-card p-4 rounded-xl border-2 bg-gray-100 text-gray-400 opacity-70 pointer-events-none`;
                     card.innerHTML = `
                         <div class="flex justify-between items-start">
@@ -391,11 +407,10 @@
                         </div>
                         <div class="mt-4 text-center text-3xl">😴</div>
                     `;
-                    card.dataset.dayIndex = currentPlanIndex; // Still assign dayIndex for potential debugging/tracking
+                    card.dataset.dayIndex = currentPlanIndex; 
                 } else {
-                    // It's a valid day within the plan
                     card.className = `day-card p-4 rounded-xl border-2 cursor-pointer relative ${dayDataForDisplay.completed ? 'completed' : 'bg-gray-50 border-gray-200'} ${isTodayCard ? 'today-highlight' : ''}`;
-                    card.dataset.dayIndex = dayDataForDisplay.dayIndex; // Use the actual dayIndex from fullPlan
+                    card.dataset.dayIndex = dayDataForDisplay.dayIndex; 
                     
                     let cardContent = `
                         <div class="flex justify-between items-start">
@@ -419,14 +434,11 @@
                 weeklyView.appendChild(card);
             }
 
-            // Disable prev/next buttons based on the range of days available for display
-            // The earliest possible "Monday of a displayed week"
             const firstPossibleMondayInPlan = new Date(PLAN_START_DATE);
-            firstPossibleMondayInPlan.setDate(PLAN_START_DATE.getDate() - dayIndexInStandardWeek); // This is the Monday of the week that contains PLAN_START_DATE
+            firstPossibleMondayInPlan.setDate(PLAN_START_DATE.getDate() - dayIndexInStandardWeek);
 
-            // The latest possible "Sunday of a displayed week"
             const lastPossibleSundayInPlan = new Date(PLAN_END_DATE);
-            lastPossibleSundayInPlan.setDate(PLAN_END_DATE.getDate() + (6 - dayMapStandardWeek[lastPossibleSundayInPlan.toLocaleString('default', { weekday: 'long' })])); // Adjust to the end of its week
+            lastPossibleSundayInPlan.setDate(PLAN_END_DATE.getDate() + (6 - dayMapStandardWeek[lastPossibleSundayInPlan.toLocaleString('default', { weekday: 'long' })]));
 
             const currentDisplayedMondayDate = new Date(PLAN_START_DATE);
             currentDisplayedMondayDate.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
@@ -434,12 +446,11 @@
             prevWeekBtn.disabled = currentDisplayedMondayDate <= firstPossibleMondayInPlan;
             nextWeekBtn.disabled = currentDisplayedMondayDate >= lastPossibleSundayInPlan;
 
-            updateProgress(); // Update progress chart for the newly rendered week's month
+            updateProgress();
         }
         
         function openModal(dayIndex) {
             const day = fullPlan[dayIndex];
-            // If it's a "No Workout" day (outside plan range or not defined), prevent modal
             if (!day || dayIndex < 0 || dayIndex >= TOTAL_DAYS_IN_PLAN) return; 
 
             modalTitle.textContent = `${day.dayName}: ${day.focus}`;
@@ -461,7 +472,6 @@
         }
 
         function updateProgress() {
-            // Get the Monday of the current displayed calendar week
             const currentPlanDayName = fullPlan[todayIndex].dayName; 
             const dayIndexInStandardWeek = dayMapStandardWeek[currentPlanDayName];
             const mondayOfCurrentDisplayedWeekPlanIndex = todayIndex - dayIndexInStandardWeek + (currentWeek * 7);
@@ -469,11 +479,11 @@
             const firstDayOfDisplayedWeek = new Date(PLAN_START_DATE);
             firstDayOfDisplayedWeek.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
 
-            const month = firstDayOfDisplayedWeek.getMonth(); // 0-11
+            const month = firstDayOfDisplayedWeek.getMonth();
             const year = firstDayOfDisplayedWeek.getFullYear();
 
             let completedThisMonth = 0;
-            let totalDaysInMonthInPlan = 0; // This counts days in the *plan* that fall into the target month
+            let totalDaysInMonthInPlan = 0;
 
             fullPlan.forEach(day => {
                 const actualDate = new Date(PLAN_START_DATE);
@@ -490,14 +500,12 @@
             const remainingThisMonth = totalDaysInMonthInPlan - completedThisMonth;
             const monthName = firstDayOfDisplayedWeek.toLocaleString('default', { month: 'long' });
 
-            // Update chart
             if (progressChart) {
                 progressChart.data.datasets[0].data = [completedThisMonth, remainingThisMonth];
                 progressChart.data.labels = [`Completed in ${monthName}`, `Remaining in ${monthName}`];
                 progressChart.update();
             }
 
-            // Update the progress card text to reflect monthly progress
             progressChartExplanation.textContent = `This chart shows your progress for ${monthName}.`;
         }
 
@@ -508,7 +516,7 @@
                 todayDetails.innerHTML = '';
                 for (const [key, value] of Object.entries(todayData.details)) {
                     const p = document.createElement('p');
-                    p.innerHTML = `<strong class="font-semibold text-gray-800">${key}:</strong> ${value}`;
+                    p.innerHTML = `<strong class="font-semibold text-gray-800">${key}:</strong> ${value}</p>`;
                     todayDetails.appendChild(p);
                 }
             } else {
@@ -524,7 +532,7 @@
                 data: {
                     labels: ['Completed', 'Remaining'],
                     datasets: [{
-                        data: [0, TOTAL_DAYS_IN_PLAN], // Initialize with overall plan length
+                        data: [0, TOTAL_DAYS_IN_PLAN],
                         backgroundColor: ['#22C55E', '#E5E7EB'],
                         borderColor: ['#FDFBF8'],
                         borderWidth: 4,
@@ -550,13 +558,12 @@
         prevWeekBtn.addEventListener('click', () => renderWeek(currentWeek - 1));
         nextWeekBtn.addEventListener('click', () => renderWeek(currentWeek + 1));
         
-        weeklyView.addEventListener('click', async (e) => { // Made async for save
+        weeklyView.addEventListener('click', async (e) => {
             const card = e.target.closest('.day-card');
             if (!card) return;
 
             const dayIndex = parseInt(card.dataset.dayIndex);
 
-            // Prevent interaction with "No Workout" cards
             if (card.classList.contains('pointer-events-none')) {
                 return;
             }
@@ -564,8 +571,8 @@
             if (e.target.type === 'checkbox') {
                 fullPlan[dayIndex].completed = e.target.checked;
                 card.classList.toggle('completed', e.target.checked);
-                await saveProgressToFirestore(); // Save changes
-                updateProgress(); // Update chart based on local state (which is now synced with Firestore)
+                await saveProgressToFirestore();
+                updateProgress();
             } else {
                 openModal(dayIndex);
             }
@@ -579,8 +586,8 @@
         });
 
         document.addEventListener('DOMContentLoaded', () => {
-            createChart(); // Initialize chart first
-            signInFirebaseAndLoadData(); // Start Firebase init and data load
+            createChart();
+            signInFirebaseAndLoadData();
         });
 
     </script>
