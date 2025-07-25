@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Chosen Palette: Warm Neutrals -->
-    <!-- Application Structure Plan: The application is designed as an interactive weekly dashboard. The primary view shows the current week's schedule in a 7-day grid, which is a highly intuitive structure for planning. Users can navigate between weeks. Clicking on a day reveals detailed workout information in a modal, preventing context loss and keeping the interface clean. A prominent "Today's Workout" card provides immediate, actionable information. Progress is tracked via checkboxes, which dynamically update a summary chart. This structure was chosen to transform a static plan into a dynamic, motivating, and easy-to-navigate tool that aligns with how users typically manage schedules. -->
+    <!-- Application Structure Plan: The application is designed as an an interactive weekly dashboard. The primary view shows the current week's schedule in a 7-day grid, which is a highly intuitive structure for planning. Users can navigate between weeks. Clicking on a day reveals detailed workout information in a modal, preventing context loss and keeping the interface clean. A prominent "Today's Workout" card provides immediate, actionable information. Progress is tracked via checkboxes, which dynamically update a summary chart. This structure was chosen to transform a static plan into a dynamic, motivating, and easy-to-navigate tool that aligns with how users typically manage schedules. -->
     <!-- Visualization & Content Choices: Report Info: Daily workout schedule. -> Goal: Organize & Inform. -> Viz/Presentation: Interactive weekly grid of cards (HTML/Tailwind) with a modal (JS-driven) for details. -> Interaction: Click card to see details. -> Justification: Breaks down the year-long plan into manageable weekly chunks, preventing overwhelm. The modal keeps the user on the main dashboard. | Report Info: Workout completion. -> Goal: Engage & Motivate. -> Viz/Presentation: Checkboxes on each card and a donut chart (Chart.js). -> Interaction: Click checkbox to mark day complete, chart updates automatically. -> Justification: Provides instant visual feedback and a sense of accomplishment, encouraging engagement with the plan. -->
     <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
@@ -229,7 +229,7 @@ const firebaseConfig = {
         initializeDefaultPlan(); // Call initially to set up the default plan
 
 
-        const todayIndex = 0; 
+        let todayActualIndex = 0; // Global variable to store today's calculated index in fullPlan
 
         let currentWeek = 0; 
         let progressChart;
@@ -313,6 +313,7 @@ const firebaseConfig = {
                 appContainer.classList.remove('hidden');
                 // Ensure default plan is loaded and rendered if not authenticated
                 initializeDefaultPlan(); // Reset fullPlan to default
+                calculateTodayIndexAndWeek(); // Calculate today's index for current default plan
                 renderWeek(currentWeek); 
                 renderToday();
                 return;
@@ -342,6 +343,7 @@ const firebaseConfig = {
                         // If no plan found, ensure fullPlan is based on default template
                         initializeDefaultPlan();
                     }
+                    calculateTodayIndexAndWeek(); // Calculate today's index for current plan
                     renderWeek(currentWeek);
                     renderToday();
                 }, (error) => {
@@ -423,9 +425,9 @@ const firebaseConfig = {
         async function handleSignOut() {
             try {
                 // Unsubscribe from Firestore listener before signing out
-                if (currentFirestoreUnsubscribe) {
-                    currentFirestoreUnsubscribe();
-                    currentFirestoreUnsubscribe = null;
+                if (unsubscribeFromFirestore) { // Use the correct variable name
+                    unsubscribeFromFirestore();
+                    unsubscribeFromFirestore = null;
                 }
                 await signOut(auth);
                 // onAuthStateChanged will handle the UI transition
@@ -484,11 +486,12 @@ const firebaseConfig = {
                         currentUserId = null;
                         isAuthAndDbReady = false;
                         // Unsubscribe from any active listener when user logs out
-                        if (currentFirestoreUnsubscribe) {
-                            currentFirestoreUnsubscribe();
-                            currentFirestoreUnsubscribe = null;
+                        if (unsubscribeFromFirestore) { // Use the correct variable name
+                            unsubscribeFromFirestore();
+                            unsubscribeFromFirestore = null;
                         }
                         initializeDefaultPlan(); // Reset fullPlan to default
+                        calculateTodayIndexAndWeek(); // Re-calculate today's index for new session
                         authPage.classList.remove('hidden'); 
                         authEmailInput.value = '';
                         authPasswordInput.value = '';
@@ -507,19 +510,89 @@ const firebaseConfig = {
             }
         }
 
+        // Global variable to store today's calculated index in fullPlan
+        // Moved declaration here to ensure it's truly global and declared only once
+        // (Previously, it might have been implicitly re-declared in some environments, causing SyntaxError)
+        // let todayActualIndex = 0; // Removed duplicate declaration from here
+
+
+        function calculateTodayIndexAndWeek() {
+            const today = new Date();
+            // Normalize today's date to midnight for accurate comparison
+            today.setHours(0, 0, 0, 0);
+
+            // Normalize PLAN_START_DATE to midnight for accurate comparison
+            PLAN_START_DATE.setHours(0, 0, 0, 0);
+
+            // Calculate the difference in days between PLAN_START_DATE and today
+            const diffTime = Math.abs(today.getTime() - PLAN_START_DATE.getTime());
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+            // Check if today falls within the plan's date range
+            if (today >= PLAN_START_DATE && today <= PLAN_END_DATE) {
+                todayActualIndex = diffDays;
+            } else {
+                // If today is outside the plan, set todayActualIndex to -1 or a value that indicates it's out of bounds
+                todayActualIndex = -1; // Indicates "No Plan for Today"
+            }
+
+            // Calculate the current week offset based on today's position
+            // Day 0 of fullPlan (Thursday) is the 3rd day of the standard week (Monday=0)
+            const dayOfWeekForPlanStart = PLAN_START_DATE.getDay(); // 0=Sunday, 1=Monday... 4=Thursday
+            // Adjust to our Monday-indexed week (Monday=0)
+            const planStartDateDayOfWeekMonIndex = (dayOfWeekForPlanStart === 0) ? 6 : dayOfWeekForPlanStart - 1;
+
+            // Calculate the index of the current day (today) within a Monday-Sunday week
+            const todayDayOfWeekMonIndex = (today.getDay() === 0) ? 6 : today.getDay() - 1;
+
+            // Calculate the number of days from the start of the current *calendar* week (Monday) to today
+            const daysIntoCurrentCalendarWeek = todayActualIndex - todayDayOfWeekMonIndex;
+
+            // Calculate the current week based on days from plan start, adjusted to current calendar week's Monday
+            // If todayActualIndex is -1, currentWeek should likely be 0 to show the first week by default for a new session.
+            if (todayActualIndex === -1) {
+                 currentWeek = 0; // Default to first week if today is outside plan
+            } else {
+                currentWeek = Math.floor((todayActualIndex - todayDayOfWeekMonIndex) / 7);
+            }
+           
+            // Ensure currentWeek doesn't go below 0 if somehow calculated negative (e.g. if PLAN_START_DATE is far in future)
+            currentWeek = Math.max(0, currentWeek);
+        }
+
         function renderWeek(calendarWeekOffset) {
             currentWeek = calendarWeekOffset;
             weeklyView.innerHTML = '';
 
-            const currentPlanDayName = fullPlan[todayIndex].dayName; 
-            const dayIndexInStandardWeek = dayMapStandardWeek[currentPlanDayName];
+            // Get the day name of the plan's original start day (Thursday for todayIndex=0)
+            const currentPlanDayNameForInitialOffset = fullPlan[0].dayName; 
+            // Get its index in the standard Monday-Sunday week (Thursday is index 3)
+            const dayIndexInStandardWeekForPlanStart = dayMapStandardWeek[currentPlanDayNameForInitialOffset];
 
-            const mondayOfCurrentDisplayedWeekPlanIndex = todayIndex - dayIndexInStandardWeek + (calendarWeekOffset * 7);
+            // Calculate the fullPlan index of the Monday for the current displayed calendar week.
+            // This needs to correctly align the fullPlan's days (starting at todayIndex=0 for Thu)
+            // with the calendar week's Monday.
+            // currentDisplayedCalendarWeekStartMs is the milliseconds for the Monday of the current displayed week
+            const currentCalendarDate = new Date(); // Use actual current date to anchor for calculation
+            currentCalendarDate.setHours(0,0,0,0);
+            const currentDayOfWeek = (currentCalendarDate.getDay() === 0) ? 6 : currentCalendarDate.getDay() -1; // 0 for Mon, 6 for Sun
+            
+            // Calculate the start of the actual current calendar week (Monday)
+            const actualCurrentCalendarMonday = new Date(currentCalendarDate);
+            actualCurrentCalendarMonday.setDate(currentCalendarDate.getDate() - currentDayOfWeek);
+            
+            // Calculate the start of the displayed calendar week (Monday)
+            const displayedCalendarMonday = new Date(actualCurrentCalendarMonday);
+            displayedCalendarMonday.setDate(actualCurrentCalendarMonday.getDate() + (calendarWeekOffset * 7));
 
-            const firstDayDisplayedDate = new Date(PLAN_START_DATE);
-            firstDayDisplayedDate.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
-            const lastDayDisplayedDate = new Date(firstDayDisplayedDate);
-            lastDayDisplayedDate.setDate(firstDayDisplayedDate.getDate() + 6);
+            // Now, find the index in fullPlan that corresponds to this displayedCalendarMonday
+            const diffDaysFromPlanStartToDisplayedMonday = Math.floor((displayedCalendarMonday.getTime() - PLAN_START_DATE.getTime()) / (1000 * 60 * 60 * 24));
+            
+            const mondayOfCurrentDisplayedWeekPlanIndex = diffDaysFromPlanStartToDisplayedMonday;
+
+            const firstDayDisplayedDate = new Date(displayedCalendarMonday);
+            const lastDayDisplayedDate = new Date(displayedCalendarMonday);
+            lastDayDisplayedDate.setDate(displayedCalendarMonday.getDate() + 6);
 
             const options = { month: 'short', day: 'numeric' };
             weekTitle.textContent = `Week ${currentWeek + 1} (${firstDayDisplayedDate.toLocaleDateString('en-US', options)} - ${lastDayDisplayedDate.toLocaleDateString('en-US', options)})`;
@@ -531,7 +604,11 @@ const firebaseConfig = {
                 let dayDataForDisplay = fullPlan[currentPlanIndex]; 
 
                 const card = document.createElement('div');
-                const isTodayCard = (currentPlanIndex === todayIndex);
+                // Check if this card represents today's actual date
+                const cardDate = new Date(displayedCalendarMonday);
+                cardDate.setDate(displayedCalendarMonday.getDate() + i);
+                const isTodayCard = (cardDate.toDateString() === new Date().toDateString());
+
 
                 if (!dayDataForDisplay || currentPlanIndex < 0 || currentPlanIndex >= TOTAL_DAYS_IN_PLAN) {
                     card.className = `day-card p-4 rounded-xl border-2 bg-gray-100 text-gray-400 opacity-70 pointer-events-none`;
@@ -574,17 +651,14 @@ const firebaseConfig = {
                 weeklyView.appendChild(card);
             }
 
-            const firstPossibleMondayInPlan = new Date(PLAN_START_DATE);
-            firstPossibleMondayInPlan.setDate(PLAN_START_DATE.getDate() - dayIndexInStandardWeek);
+            const earliestMondayInPlan = new Date(PLAN_START_DATE);
+            earliestMondayInPlan.setDate(PLAN_START_DATE.getDate() - dayMapStandardWeek[PLAN_START_DATE.toLocaleString('default', { weekday: 'long' })]);
 
-            const lastPossibleSundayInPlan = new Date(PLAN_END_DATE);
-            lastPossibleSundayInPlan.setDate(PLAN_END_DATE.getDate() + (6 - dayMapStandardWeek[lastPossibleSundayInPlan.toLocaleString('default', { weekday: 'long' })]));
-
-            const currentDisplayedMondayDate = new Date(PLAN_START_DATE);
-            currentDisplayedMondayDate.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
-
-            prevWeekBtn.disabled = currentDisplayedMondayDate <= firstPossibleMondayInPlan;
-            nextWeekBtn.disabled = currentDisplayedMondayDate >= lastPossibleSundayInPlan;
+            const latestSundayInPlan = new Date(PLAN_END_DATE);
+            latestSundayInPlan.setDate(PLAN_END_DATE.getDate() + (6 - dayMapStandardWeek[PLAN_END_DATE.toLocaleString('default', { weekday: 'long' })]));
+            
+            prevWeekBtn.disabled = displayedCalendarMonday <= earliestMondayInPlan;
+            nextWeekBtn.disabled = displayedCalendarMonday >= latestSundayInPlan;
 
             updateProgress();
         }
@@ -612,15 +686,21 @@ const firebaseConfig = {
         }
 
         function updateProgress() {
-            const currentPlanDayName = fullPlan[todayIndex].dayName; 
-            const dayIndexInStandardWeek = dayMapStandardWeek[currentPlanDayName];
-            const mondayOfCurrentDisplayedWeekPlanIndex = todayIndex - dayIndexInStandardWeek + (currentWeek * 7);
+            const currentPlanDayName = fullPlan[todayActualIndex]?.dayName; // Use todayActualIndex
+            const dayIndexInStandardWeek = currentPlanDayName ? dayMapStandardWeek[currentPlanDayName] : 0; // Default to 0 if today is out of plan
+            
+            // Calculate the Monday of the current *displayed* calendar week
+            const currentCalendarDateForProgress = new Date();
+            currentCalendarDateForProgress.setHours(0,0,0,0);
+            const currentDayOfWeekForProgress = (currentCalendarDateForProgress.getDay() === 0) ? 6 : currentCalendarDateForProgress.getDay() - 1;
+            const actualCurrentCalendarMonday = new Date(currentCalendarDateForProgress);
+            actualCurrentCalendarMonday.setDate(currentCalendarDateForProgress.getDate() - currentDayOfWeekForProgress);
 
-            const firstDayOfDisplayedWeek = new Date(PLAN_START_DATE);
-            firstDayOfDisplayedWeek.setDate(PLAN_START_DATE.getDate() + mondayOfCurrentDisplayedWeekPlanIndex);
+            const displayedCalendarMonday = new Date(actualCurrentCalendarMonday);
+            displayedCalendarMonday.setDate(actualCurrentCalendarMonday.getDate() + (currentWeek * 7)); // currentWeek is the offset from actual current week
 
-            const month = firstDayOfDisplayedWeek.getMonth();
-            const year = firstDayOfDisplayedWeek.getFullYear();
+            const month = displayedCalendarMonday.getMonth();
+            const year = displayedCalendarMonday.getFullYear();
 
             let completedThisMonth = 0;
             let totalDaysInMonthInPlan = 0;
@@ -638,7 +718,7 @@ const firebaseConfig = {
             });
 
             const remainingThisMonth = totalDaysInMonthInPlan - completedThisMonth;
-            const monthName = firstDayOfDisplayedWeek.toLocaleString('default', { month: 'long' });
+            const monthName = displayedCalendarMonday.toLocaleString('default', { month: 'long' });
 
             if (progressChart) {
                 progressChart.data.datasets[0].data = [completedThisMonth, remainingThisMonth];
@@ -649,9 +729,10 @@ const firebaseConfig = {
             progressChartExplanation.textContent = `This chart shows your progress for ${monthName}.`;
         }
 
+
         function renderToday() {
-            const todayData = fullPlan[todayIndex];
-            if (todayData) {
+            const todayData = fullPlan[todayActualIndex]; // Use the calculated todayActualIndex
+            if (todayActualIndex !== -1 && todayData) { // Check if today is within the plan
                 todayTitle.textContent = `${todayData.dayName}: ${todayData.focus}`;
                 todayDetails.innerHTML = '';
                 for (const [key, value] of Object.entries(todayData.details)) {
@@ -661,7 +742,7 @@ const firebaseConfig = {
                 }
             } else {
                 todayTitle.textContent = `No Plan for Today`;
-                todayDetails.innerHTML = `<p>It looks like today is outside your defined workout plan.</p>`;
+                todayDetails.innerHTML = `<p>It looks like today is outside your defined workout plan (or the plan has ended).</p>`;
             }
         }
 
@@ -732,6 +813,7 @@ const firebaseConfig = {
 
         document.addEventListener('DOMContentLoaded', () => {
             createChart();
+            calculateTodayIndexAndWeek(); // Calculate today's index and initial week
             initializeFirebaseAndAuth();
         });
 
